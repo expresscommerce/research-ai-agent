@@ -40,3 +40,5 @@ python-multipart==0.0.20
 
 # --- Search Extensions ---
 duckduckgo-search>=6.1.7
+qdrant-client==1.9.0
+
