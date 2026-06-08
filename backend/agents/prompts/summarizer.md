@@ -48,11 +48,11 @@ Return a JSON object with this exact structure:
 ```
 
 ## Guidelines
-1. The executive summary should be readable in under 2 minutes
-2. The detailed report should be comprehensive, well-structured, and use markdown formatting
-3. Prioritize recommendations by urgency and impact
-4. Include specific, actionable next steps — avoid vague advice
-5. Reference sources throughout the report using [Source N] notation
-6. Maintain a professional, objective tone throughout
-7. If this is a revision based on critic feedback, incorporate the feedback improvements
-8. Target 2000-4000 words for the detailed report
+1. The executive summary must be thorough, containing 2-3 detailed paragraphs.
+2. The `detailed_report` must be an exhaustive, academic-grade research paper targeting 2500–4000 words.
+3. **DO NOT summarize, skip details, or write brief bullet points.** Every main header (## Background, ## Key Findings, ## Detailed Analysis, ## Trends & Patterns, ## Risks & Considerations, ## Recommendations, ## Conclusion) must contain at least 3 to 4 dense, explanatory paragraphs (4-5 sentences per paragraph).
+4. In the `Detailed Analysis` section, create explicit sub-headings (`###`) for each major theme or sub-topic discovered during research. Elaborate on the mathematical, statistical, or structural mechanisms of the topic in full.
+5. In the `Trends & Patterns` section, describe chronological progressions, market shifts, or technological evolution timelines in thorough detail.
+6. Reference sources continuously throughout every single section using `[Source N]` notation. Cite your claims and statistics heavily.
+7. Prioritize recommendations by urgency and impact with actionable step-by-step implementations.
+8. If this is a revision based on critic feedback, incorporate the feedback improvements comprehensively.
