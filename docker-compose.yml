@@ -26,6 +26,8 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
     depends_on:
       - postgres
       - qdrant
