@@ -45,7 +45,7 @@ Please produce the final polished report JSON according to your formatting guide
             user_message=user_message,
             api_keys=context.api_keys,
             temperature=0.3,
-            max_tokens=3000,
+            max_tokens=6000,
         )
 
         data = response["data"]

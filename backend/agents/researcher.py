@@ -55,7 +55,6 @@ Previous weaknesses identified:
         search_results = []
         search_context_str = ""
         tasks = []
-
         # Tavily Search
         if settings.ENABLE_TAVILY and settings.TAVILY_API_KEY:
             async def run_tavily(q: str):
@@ -66,9 +65,9 @@ Previous weaknesses identified:
                             json={
                                 "api_key": settings.TAVILY_API_KEY,
                                 "query": q,
-                                "search_depth": "basic",
+                                "search_depth": "advanced",
                                 "include_answer": False,
-                                "max_results": 2
+                                "max_results": 5
                             }
                         )
                         if response.status_code == 200:
@@ -79,7 +78,7 @@ Previous weaknesses identified:
                     logger.error(f"Tavily search failed for '{q}': {ex}")
                 return []
             
-            for q in tavily_queries[:2]:
+            for q in tavily_queries[:4]:
                 tasks.append(run_tavily(q))
 
         # DuckDuckGo Search
@@ -90,7 +89,7 @@ Previous weaknesses identified:
                     # Run ddgs search synchronously in executor to prevent blocking the async loop
                     def sync_search(query_str):
                         with DDGS() as ddgs:
-                            return [r for r in ddgs.text(query_str, max_results=2)]
+                            return [r for r in ddgs.text(query_str, max_results=5)]
                     
                     loop = asyncio.get_running_loop()
                     results = await loop.run_in_executor(None, sync_search, q)
@@ -99,7 +98,7 @@ Previous weaknesses identified:
                     logger.error(f"DuckDuckGo search failed for '{q}': {ex}")
                 return []
 
-            for q in ddg_queries[:2]:
+            for q in ddg_queries[:4]:
                 tasks.append(run_ddg(q))
 
         # arXiv Academic Search
@@ -107,7 +106,7 @@ Previous weaknesses identified:
             async def run_arxiv(q: str):
                 try:
                     import xml.etree.ElementTree as ET
-                    url = f"http://export.arxiv.org/api/query?search_query=all:{q}&start=0&max_results=2"
+                    url = f"http://export.arxiv.org/api/query?search_query=all:{q}&start=0&max_results=5"
                     async with httpx.AsyncClient(timeout=15.0) as client:
                         response = await client.get(url)
                         if response.status_code == 200:
@@ -128,7 +127,7 @@ Previous weaknesses identified:
                     logger.error(f"arXiv search failed for '{q}': {ex}")
                 return []
 
-            for q in arxiv_queries[:2]:
+            for q in arxiv_queries[:4]:
                 tasks.append(run_arxiv(q))
 
         # Run all searches concurrently

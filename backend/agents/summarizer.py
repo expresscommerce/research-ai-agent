@@ -57,7 +57,7 @@ Create a comprehensive, well-structured report with executive summary, detailed 
             user_message=user_message,
             api_keys=context.api_keys,
             temperature=0.5,
-            max_tokens=3000,
+            max_tokens=5000,
         )
 
         data = response["data"]

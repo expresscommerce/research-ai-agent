@@ -33,7 +33,9 @@ Return a JSON object with this exact structure:
 }
 ```
 
-## Formatting Guidelines
-1. Organize the `detailed_report` using standard Markdown. Do not use plain walls of text; break it up with headers (`##`, `###`), bullets, tables, and code blocks if appropriate.
-2. Cross-reference the verified sources. Ensure every statement in the detailed report that relies on source information has an inline bracket citation matching the index in `source_references`.
-3. Do not include rejected sources in the `source_references` list.
+## Formatting and Depth Guidelines
+1. **Academic Depth & Rigor:** The `detailed_report` must be extremely comprehensive, aiming for a minimum of 1000–1500 words of detailed analysis. Avoid high-level bullet points or short summaries. Explore nuances, technical parameters, and historical data points in full.
+2. **Strict Structure:** Organize the report using proper Markdown headers (`##`, `###`), bolding, blockquotes, and tables where appropriate to compare different viewpoints or metrics.
+3. **Citation Density:** Cross-reference every major statement, statistic, or assertion to its original source. Every paragraph in the detailed report must contain inline bracket citations (e.g., [1], [2]) pointing to the verified entries in `source_references`.
+4. **Balanced Presentation:** Dedicate space to discussing conflicting findings, data limitations, and alternative interpretations found in the research sources.
+5. Do not include rejected sources in the `source_references` list.
