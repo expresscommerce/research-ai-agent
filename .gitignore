@@ -1,0 +1,45 @@
+# --- Environment Variables ---
+.env
+.env.local
+.env.*.local
+docker-compose.override.yml
+
+# --- Python ---
+venv/
+.venv/
+ENV/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.toast
+.lucid
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Database & Storage ---
+postgres_data/
+qdrant_data/
+*.db
+*.sqlite3
+
+# --- IDEs and Editor Configs ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+.DS_Store
+
+# --- Logs ---
+*.log
+logs/

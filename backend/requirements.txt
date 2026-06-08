@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════
+# Agentic AI Research Platform — Dependencies
+# ═══════════════════════════════════════════
+
+# --- Core Framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-dotenv==1.0.1
+pydantic==2.10.3
+pydantic-settings==2.7.1
+
+# --- Database ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+greenlet==3.1.1
+
+# --- Authentication ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+
+# --- LLM Provider Abstraction ---
+litellm==1.55.8
+
+# --- API Key Encryption ---
+cryptography==44.0.0
+
+# --- HTTP Client ---
+httpx>=0.23.0,<0.28.0
+
+# --- PDF Generation ---
+fpdf2==2.8.2
+
+# --- WebSocket ---
+websockets==14.1
+
+# --- Utilities ---
+python-multipart==0.0.20
+
+# --- Search Extensions ---
+duckduckgo-search>=6.1.7
