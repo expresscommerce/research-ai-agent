@@ -40,48 +40,101 @@ Previous weaknesses identified:
 {json.dumps(context.critic_feedback.get('weaknesses', []), indent=2)}
 """
 
-        # Web search via Tavily if configured
-        tavily_api_key = settings.TAVILY_API_KEY
+        # Execute configured search engines in parallel
         search_results = []
-        tavily_context = ""
+        search_context_str = ""
+        tasks = []
 
-        if tavily_api_key:
-            logger.info(f"[researcher] Tavily API Key detected. Performing real web search for queries: {queries}")
-            
-            async def search_query(q: str):
+        # Tavily Search
+        if settings.ENABLE_TAVILY and settings.TAVILY_API_KEY:
+            async def run_tavily(q: str):
                 try:
                     async with httpx.AsyncClient(timeout=15.0) as client:
                         response = await client.post(
                             "https://api.tavily.com/search",
                             json={
-                                "api_key": tavily_api_key,
+                                "api_key": settings.TAVILY_API_KEY,
                                 "query": q,
                                 "search_depth": "basic",
                                 "include_answer": False,
-                                "max_results": 3
+                                "max_results": 2
                             }
                         )
                         if response.status_code == 200:
                             data = response.json()
-                            return data.get("results", [])
-                        else:
-                            logger.error(f"Tavily search failed for '{q}': {response.status_code} {response.text}")
+                            results = data.get("results", [])
+                            return [{"title": r.get("title"), "url": r.get("url"), "content": r.get("content"), "engine": "tavily"} for r in results]
                 except Exception as ex:
-                    logger.error(f"Tavily search exception for '{q}': {ex}")
+                    logger.error(f"Tavily search failed for '{q}': {ex}")
+                return []
+            
+            for q in queries[:2]:
+                tasks.append(run_tavily(q))
+
+        # DuckDuckGo Search
+        if settings.ENABLE_DUCKDUCKGO:
+            async def run_ddg(q: str):
+                try:
+                    from duckduckgo_search import DDGS
+                    # Run ddgs search synchronously in executor to prevent blocking the async loop
+                    def sync_search(query_str):
+                        with DDGS() as ddgs:
+                            return [r for r in ddgs.text(query_str, max_results=2)]
+                    
+                    loop = asyncio.get_running_loop()
+                    results = await loop.run_in_executor(None, sync_search, q)
+                    return [{"title": r.get("title"), "url": r.get("href"), "content": r.get("body"), "engine": "duckduckgo"} for r in results]
+                except Exception as ex:
+                    logger.error(f"DuckDuckGo search failed for '{q}': {ex}")
                 return []
 
-            tasks = [search_query(q) for q in queries[:3]]  # Limit to 3 queries to speed up context loading
+            for q in queries[:2]:
+                tasks.append(run_ddg(q))
+
+        # arXiv Academic Search
+        if settings.ENABLE_ARXIV:
+            async def run_arxiv(q: str):
+                try:
+                    import xml.etree.ElementTree as ET
+                    url = f"http://export.arxiv.org/api/query?search_query=all:{q}&start=0&max_results=2"
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        response = await client.get(url)
+                        if response.status_code == 200:
+                            root = ET.fromstring(response.content)
+                            results = []
+                            for entry in root.findall("{http://www.w3.org/2005/Atom}entry"):
+                                title = entry.find("{http://www.w3.org/2005/Atom}title")
+                                summary = entry.find("{http://www.w3.org/2005/Atom}summary")
+                                url_id = entry.find("{http://www.w3.org/2005/Atom}id")
+                                results.append({
+                                    "title": title.text.strip().replace("\n", " ") if title is not None else "arXiv Article",
+                                    "url": url_id.text.strip() if url_id is not None else "",
+                                    "content": summary.text.strip().replace("\n", " ") if summary is not None else "",
+                                    "engine": "arxiv"
+                                })
+                            return results
+                except Exception as ex:
+                    logger.error(f"arXiv search failed for '{q}': {ex}")
+                return []
+
+            for q in queries[:2]:
+                tasks.append(run_arxiv(q))
+
+        # Run all searches concurrently
+        if tasks:
+            logger.info(f"[researcher] Running concurrent searches across enabled engines for: {queries[:2]}")
             results_lists = await asyncio.gather(*tasks)
             for sublist in results_lists:
                 if sublist:
                     search_results.extend(sublist)
 
-            if search_results:
-                tavily_context = "\n\n**Real Web Search Results (Tavily):**\n"
-                for idx, res in enumerate(search_results, 1):
-                    tavily_context += f"- [{idx}] {res.get('title')} ({res.get('url')}): {res.get('content')}\n"
+        # Build query context
+        if search_results:
+            search_context_str = "\n\n**Retrieved Search Results (Tavily, DuckDuckGo, and arXiv):**\n"
+            for idx, res in enumerate(search_results, 1):
+                search_context_str += f"- [{idx}] [{res.get('engine').upper()}] {res.get('title')} ({res.get('url')}): {res.get('content')}\n"
         else:
-            logger.info("[researcher] Tavily API Key not found. Falling back to LLM knowledge simulation.")
+            logger.info("[researcher] No search results returned from any enabled engines. Simulating knowledge.")
 
         user_message = f"""Research the following topics thoroughly:
 
@@ -92,7 +145,7 @@ Previous weaknesses identified:
 
 **Specific Research Queries:**
 {json.dumps(queries, indent=2)}
-{feedback_section}{tavily_context}
+{feedback_section}{search_context_str}
 
 **Iteration:** {context.iteration}
 
