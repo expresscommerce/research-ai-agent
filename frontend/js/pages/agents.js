@@ -111,11 +111,14 @@ function renderTimeline(executions, sessionStatus) {
 function getAgentMessage(execution) {
     const output = execution.output_data || {};
     switch (execution.agent_type) {
-        case 'planner': return `Created strategy with ${(output.sub_topics||[]).length} sub-topics and ${(output.research_queries||[]).length} queries.`;
+        case 'planner': return `Created strategy with ${(output.sub_topics||[]).length} sub-topics.`;
+        case 'query_generator': return `Generated ${(output.tavily_queries||[]).length} Tavily, ${(output.ddg_queries||[]).length} DDG, and ${(output.arxiv_queries||[]).length} arXiv search queries.`;
         case 'researcher': return `Gathered ${(output.findings||[]).length} findings from ${(output.sources||[]).length} sources.`;
+        case 'source_verifier': return `Verified ${(output.verified_sources||[]).filter(s => s.action === 'trust').length} trusted sources out of ${(output.verified_sources||[]).length} total.`;
         case 'analyzer': return `Identified ${(output.key_findings||[]).length} key findings, ${(output.trends||[]).length} trends, and ${(output.contradictions||[]).length} contradictions.`;
         case 'summarizer': return `Generated report draft with ${(output.key_insights||[]).length} insights and ${(output.recommendations||[]).length} recommendations.`;
         case 'critic': return `Quality score: ${output.quality_score || '?'}/100 — Verdict: ${output.verdict || 'reviewing'}`;
+        case 'report_generator': return `Finalized and styled report compilation with ${(output.source_references||[]).length} verified references.`;
         default: return execution.status;
     }
 }

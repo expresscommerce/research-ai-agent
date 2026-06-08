@@ -16,10 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.base_agent import AgentContext, AgentResult
 from agents.planner import PlannerAgent
+from agents.query_generator import QueryGeneratorAgent
 from agents.researcher import ResearcherAgent
+from agents.source_verifier import SourceVerifierAgent
 from agents.analyzer import AnalyzerAgent
 from agents.summarizer import SummarizerAgent
 from agents.critic import CriticAgent
+from agents.report_generator import ReportGeneratorAgent
 from agents.memory import MemoryManager
 from app.config import settings
 from app.models.agent_execution import AgentExecution
@@ -50,10 +53,13 @@ class Conductor:
 
         # Initialize agents
         self.planner = PlannerAgent()
+        self.query_generator = QueryGeneratorAgent()
         self.researcher = ResearcherAgent()
+        self.source_verifier = SourceVerifierAgent()
         self.analyzer = AnalyzerAgent()
         self.summarizer = SummarizerAgent()
         self.critic = CriticAgent()
+        self.report_generator = ReportGeneratorAgent()
 
         # Initialize memory
         self.memory = MemoryManager(db, session.id)
@@ -171,9 +177,30 @@ class Conductor:
                 self.session.title = plan_result.output["title"]
 
             # ═══════════════════════════════════════
+            # Step 1.5: QUERY GENERATION
+            # ═══════════════════════════════════════
+            query_gen_context = AgentContext(
+                session_id=self.session.id,
+                query=self.session.query,
+                model=self.model,
+                api_keys=self.api_keys,
+                previous_findings=[plan_result.output],
+                memory=memory_context,
+            )
+            await self._notify("agent_start", {"agent": "query_generator", "message": "Generating optimized search queries..."})
+            query_gen_result = await self.query_generator.run(query_gen_context)
+
+            if query_gen_result.status == "failed":
+                raise RuntimeError(f"Query Generator failed: {query_gen_result.error}")
+
+            query_gen_exec = await self._record_execution(query_gen_result, 1, {"plan_title": plan_result.output.get("title")})
+            await self._log("Optimized search queries generated for Tavily, DuckDuckGo, and arXiv", agent_type="query_generator", execution_id=query_gen_exec.id)
+            await self._notify("agent_complete", {"agent": "query_generator", "message": "Optimized queries generated"})
+
+            # ═══════════════════════════════════════
             # Step 2: RESEARCH (+ iterative loop)
             # ═══════════════════════════════════════
-            all_findings = [plan_result.output]  # Plan is the first "finding" (contains queries)
+            all_findings = [plan_result.output, query_gen_result.output]  # Plan and generated queries are findings
             analysis_result = None
             report_result = None
             critic_result_obj = None
@@ -204,9 +231,32 @@ class Conductor:
                     await self._log(f"Researcher failed: {research_result.error}", level="ERROR", agent_type="researcher")
                     raise RuntimeError(f"Researcher failed: {research_result.error}")
 
-                research_exec = await self._record_execution(research_result, iteration, {"queries": plan_result.output.get("research_queries", [])})
+                research_exec = await self._record_execution(research_result, iteration, {"queries": query_gen_result.output.get("tavily_queries", [])})
                 all_findings.append(research_result.output)
                 await self._notify("agent_complete", {"agent": "researcher", "iteration": iteration, "message": f"Found {len(research_result.output.get('findings', []))} findings"})
+
+                # ── VERIFY SOURCES ──
+                await self._update_status("verifying")
+                await self._notify("agent_start", {"agent": "source_verifier", "iteration": iteration, "message": "Verifying research sources..."})
+
+                verifier_context = AgentContext(
+                    session_id=self.session.id,
+                    query=self.session.query,
+                    model=self.model,
+                    api_keys=self.api_keys,
+                    iteration=iteration,
+                    previous_findings=all_findings,
+                    critic_feedback=critic_feedback,
+                    memory=memory_context,
+                )
+
+                verifier_result = await self.source_verifier.run(verifier_context)
+                if verifier_result.status == "failed":
+                    raise RuntimeError(f"Source Verifier failed: {verifier_result.error}")
+
+                verifier_exec = await self._record_execution(verifier_result, iteration, {"raw_sources_count": len(research_result.sources)})
+                all_findings.append(verifier_result.output)
+                await self._notify("agent_complete", {"agent": "source_verifier", "iteration": iteration, "message": f"Verified sources: {len(verifier_result.output.get('verified_sources', []))}"})
 
                 # ── ANALYZE ──
                 await self._update_status("analyzing")
@@ -317,18 +367,42 @@ class Conductor:
                     await self._log(f"Max iterations reached, finalizing with score {quality_score}", agent_type="conductor")
 
             # ═══════════════════════════════════════
+            # Step 2.5: GENERATE FINAL REPORT
+            # ═══════════════════════════════════════
+            await self._update_status("finalizing")
+            await self._notify("agent_start", {"agent": "report_generator", "message": "Compiling final polished report..."})
+
+            rep_gen_context = AgentContext(
+                session_id=self.session.id,
+                query=self.session.query,
+                model=self.model,
+                api_keys=self.api_keys,
+                previous_findings=all_findings,
+                previous_report=report_result,
+                memory=memory_context,
+            )
+
+            rep_gen_result = await self.report_generator.run(rep_gen_context)
+            if rep_gen_result.status == "failed":
+                raise RuntimeError(f"Report Generator failed: {rep_gen_result.error}")
+
+            rep_gen_exec = await self._record_execution(rep_gen_result, self.session.iteration_count, {"sources_count": len(all_findings)})
+            final_report_data = rep_gen_result.output
+            await self._notify("agent_complete", {"agent": "report_generator", "message": "Final report generated"})
+
+            # ═══════════════════════════════════════
             # Step 3: SAVE FINAL REPORT
             # ═══════════════════════════════════════
             confidence = critic_output.get("quality_score", 70) / 100.0 if critic_result_obj else 0.7
 
             report = Report(
                 session_id=self.session.id,
-                executive_summary=report_result.get("executive_summary", ""),
-                detailed_report=report_result.get("detailed_report", ""),
-                key_insights=report_result.get("key_insights", []),
-                risks=report_result.get("risks", []),
-                recommendations=report_result.get("recommendations", []),
-                source_references=report_result.get("source_references", []),
+                executive_summary=final_report_data.get("executive_summary", ""),
+                detailed_report=final_report_data.get("detailed_report", ""),
+                key_insights=final_report_data.get("key_insights", []),
+                risks=final_report_data.get("risks", []),
+                recommendations=final_report_data.get("recommendations", []),
+                source_references=final_report_data.get("source_references", []),
                 confidence_score=confidence,
                 revision_number=self.session.iteration_count,
                 critic_feedback=critic_output if critic_result_obj else None,

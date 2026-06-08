@@ -41,10 +41,13 @@
 
     /* --- Agent Colors --- */
     --agent-planner: #8B5CF6;
+    --agent-query_generator: #EA580C;
     --agent-researcher: #2563EB;
+    --agent-source_verifier: #4F46E5;
     --agent-analyzer: #0891B2;
     --agent-summarizer: #059669;
     --agent-critic: #DC2626;
+    --agent-report_generator: #DB2777;
     --agent-conductor: #6366F1;
 
     /* --- Typography --- */
