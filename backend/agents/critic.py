@@ -36,7 +36,7 @@ Recommendations: {json.dumps(report.get('recommendations', []), indent=2)}
 **Analysis That Produced This Report:**
 Key Findings: {json.dumps(analysis.get('key_findings', [])[:5], indent=2)}
 Contradictions: {json.dumps(analysis.get('contradictions', []), indent=2)}
-Data Quality: {json.dumps(analysis.get('data_quality_assessment', {{}}), indent=2)}
+Data Quality: {json.dumps(analysis.get('data_quality_assessment', {}), indent=2)}
 
 **Number of Source References:** {len(report.get('source_references', []))}
 **Iteration:** {context.iteration}
