@@ -119,16 +119,16 @@ async function renderReport() {
 
 async function downloadPdf(sessionId) {
     try {
-        showToast('Generating PDF...', 'info');
-        const blob = await api.downloadPdf(sessionId);
-        const url = URL.createObjectURL(blob);
+        showToast('Downloading PDF...', 'info');
+        const token = api.token || '';
+        const url = `/api/v1/research/${sessionId}/report/download?token=${token}`;
+        
         const a = document.createElement('a'); 
         a.href = url; 
         a.download = 'research_report.pdf';
         document.body.appendChild(a); 
         a.click(); 
-        a.remove(); 
-        URL.revokeObjectURL(url);
+        a.remove();
         showToast('PDF downloaded successfully.', 'success');
     } catch (err) { 
         showToast('PDF download failed: ' + err.message, 'error'); 

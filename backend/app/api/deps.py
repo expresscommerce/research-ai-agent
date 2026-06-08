@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,17 +20,24 @@ security = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
+    token: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Extract and validate the current user from JWT bearer token."""
-    if not credentials:
+    """Extract and validate the current user from JWT bearer token or query parameter."""
+    token_val = None
+    if credentials:
+        token_val = credentials.credentials
+    elif token:
+        token_val = token
+
+    if not token_val:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    payload = decode_access_token(credentials.credentials)
+    payload = decode_access_token(token_val)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -109,7 +109,22 @@ Guidance for this section: {guidance}
                     temperature=0.5,
                     max_tokens=3000,
                 )
-                return f"## {title}\n\n{response.content.strip()}\n\n"
+                content = response.content.strip()
+                
+                # Strip duplicate headings (including variant markers) if the LLM outputted them
+                heading_marker = f"## {title}"
+                if content.startswith(heading_marker):
+                    content = content[len(heading_marker):].strip()
+                elif content.startswith(f"# {title}"):
+                    content = content[len(f"# {title}"):].strip()
+                elif content.startswith(f"### {title}"):
+                    content = content[len(f"### {title}"):].strip()
+                
+                # Strip leading/trailing quote wrappers if LLM returned block
+                if content.startswith("```") and content.endswith("```"):
+                    content = "\n".join(content.split("\n")[1:-1]).strip()
+                
+                return f"## {title}\n\n{content}\n\n"
             except Exception as e:
                 logger.error(f"Failed to generate section '{title}': {e}")
                 return f"## {title}\n\n*Failed to generate this section due to an error: {e}*\n\n"

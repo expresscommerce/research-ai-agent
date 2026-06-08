@@ -82,9 +82,26 @@ async def download_report_pdf(
             super().__init__()
             self.col = 0
             self.y_top = 35
+            self.two_column = False
+            self.set_top_margin(25)
+
+        def add_page(self, *args, **kwargs):
+            if self.two_column:
+                self.col = 0
+                self.y_top = 25
+                self.set_left_margin(10)
+                self.set_right_margin(110)
+            super().add_page(*args, **kwargs)
 
         def header(self):
-            # Render a professional, clean header
+            # Temporarily reset margins to full page width for the header
+            old_left = self.l_margin
+            old_right = self.r_margin
+            self.set_left_margin(10)
+            self.set_right_margin(10)
+            
+            # Render a professional, clean header at the absolute top of the page
+            self.set_y(10)
             self.set_font("Helvetica", "B", 8)
             self.set_text_color(30, 41, 59)
             self.cell(0, 10, "RESEARCH PORTFOLIO & ANALYSIS REPORT", align="L")
@@ -94,33 +111,94 @@ async def download_report_pdf(
             self.set_draw_color(203, 213, 225)
             self.set_line_width(0.3)
             self.line(10, 18, 200, 18)
-            self.ln(5)
+            
+            # Restore margins and position
+            self.set_left_margin(old_left)
+            self.set_right_margin(old_right)
+            self.set_x(old_left)
+            self.set_y(self.y_top)
 
         def footer(self):
+            # Temporarily reset margins to full page width for the footer
+            old_left = self.l_margin
+            old_right = self.r_margin
+            self.set_left_margin(10)
+            self.set_right_margin(10)
+            
             self.set_y(-15)
             self.set_font("Helvetica", "I", 7.5)
             self.set_text_color(148, 163, 184)
             self.line(10, self.get_y() - 2, 200, self.get_y() - 2)
             self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
+            
+            # Restore margins
+            self.set_left_margin(old_left)
+            self.set_right_margin(old_right)
 
         def set_col(self, col):
             # Switch between column 0 (left) and 1 (right)
             self.col = col
-            x = 10 + col * 100  # col 0: 10, col 1: 110
-            self.set_left_margin(x)
+            if col == 0:
+                self.set_left_margin(10)
+                self.set_right_margin(110)
+                x = 10
+            else:
+                self.set_left_margin(110)
+                self.set_right_margin(10)
+                x = 110
             self.set_x(x)
             self.set_y(self.y_top)
 
         def accept_page_break(self):
             # Custom page break handler for two-column flow
+            if not self.two_column:
+                return True
+            
             if self.col == 0:
                 self.set_col(1)
                 return False  # Do not add page, just switch column
             else:
-                self.col = 0
-                self.y_top = 25  # Margin for subsequent pages
-                self.set_left_margin(10)
                 return True   # Add a new page
+
+        def ensure_space(self, height):
+            # Page height is 297, bottom margin is 20, so bottom limit is 277.
+            # We use 270 as a safe bottom threshold before we break.
+            y = self.get_y()
+            if not self.two_column:
+                if y + height > 270:
+                    self.add_page()
+            else:
+                if y + height > 270:
+                    if self.col == 0:
+                        self.set_col(1)
+                    else:
+                        self.add_page()
+
+        def print_paragraph(self, text, font_size=8, text_color=(71, 85, 105), font_style="", line_height=4, spacing=2):
+            self.set_font("Helvetica", font_style, font_size)
+            self.set_text_color(*text_color)
+            clean_txt = clean_pdf_text(text)
+            
+            # Save custom layout state to protect it from dry_run mutations
+            old_col = self.col
+            old_y_top = self.y_top
+            old_two_column = self.two_column
+            old_left = self.l_margin
+            old_right = self.r_margin
+            
+            # Use dry_run to compute correct height
+            h = self.multi_cell(0, line_height, clean_txt, dry_run=True, output="HEIGHT")
+            
+            # Restore custom layout state
+            self.col = old_col
+            self.y_top = old_y_top
+            self.two_column = old_two_column
+            self.set_left_margin(old_left)
+            self.set_right_margin(old_right)
+            
+            self.ensure_space(h)
+            self.multi_cell(0, line_height, clean_txt)
+            self.ln(spacing)
 
         def draw_table(self, headers, rows, col_widths):
             # Draw a professional, compact table matching column width
@@ -156,7 +234,7 @@ async def download_report_pdf(
             self.set_xy(x + 5, y + 2)
             self.set_font("Helvetica", "B", 7.5)
             self.set_text_color(30, 41, 59)
-            self.cell(0, 5, clean_pdf_text(title))
+            self.cell(width - 60, 5, clean_pdf_text(title))
             
             # Legend
             self.set_xy(x + width - 50, y + 2)
@@ -164,12 +242,12 @@ async def download_report_pdf(
             self.rect(x + width - 50, y + 3.5, 2.5, 2.5, "F")
             self.set_xy(x + width - 46, y + 2)
             self.set_font("Helvetica", "", 6.5)
-            self.cell(0, 5, clean_pdf_text(label1))
+            self.cell(15, 5, clean_pdf_text(label1))
             
             self.set_fill_color(225, 29, 72)  # Rose 600
             self.rect(x + width - 25, y + 3.5, 2.5, 2.5, "F")
             self.set_xy(x + width - 21, y + 2)
-            self.cell(0, 5, clean_pdf_text(label2))
+            self.cell(15, 5, clean_pdf_text(label2))
             
             # Axes
             chart_x = x + 15
@@ -261,23 +339,19 @@ async def download_report_pdf(
     pdf.set_text_color(51, 65, 85)
     if report.executive_summary:
         clean_text = report.executive_summary.replace("**", "").replace("##", "").replace("#", "")
-        pdf.multi_cell(0, 5, clean_pdf_text(clean_text))
-    pdf.ln(3)
+        pdf.print_paragraph(clean_text, font_size=9.5, text_color=(51, 65, 85), line_height=5, spacing=3)
 
     # Key Insights (Full Width)
     if report.key_insights:
         pdf.set_text_color(30, 41, 59)
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 7, "Key Insights", ln=True)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(51, 65, 85)
         for i, insight in enumerate(report.key_insights, 1):
             if isinstance(insight, dict):
                 text = f"{i}. {insight.get('insight', str(insight))}"
             else:
                 text = f"{i}. {insight}"
-            pdf.multi_cell(0, 5, clean_pdf_text(text))
-            pdf.ln(0.5)
+            pdf.print_paragraph(text, font_size=9, text_color=(51, 65, 85), line_height=5, spacing=0.5)
         pdf.ln(4)
 
     # Transition to Two-Column mode for the Detailed Report and subsequent sections
@@ -287,6 +361,7 @@ async def download_report_pdf(
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())  # Header separator line
     
     pdf.y_top = pdf.get_y() + 4
+    pdf.two_column = True
     pdf.set_col(0)
 
     # Detailed Report
@@ -295,23 +370,30 @@ async def download_report_pdf(
         para_accumulator = []
         table_accumulator = []
         in_table = False
+        skip_header = True
+        last_heading = ""
         
         for line in lines:
             line_strip = line.strip()
             
-            # Skip overall document title duplication
-            if line_strip.startswith("# RESEARCH PAPER:"):
+            # Skip overall document title and Abstract duplication from detailed report
+            if skip_header:
+                if line_strip == "---":
+                    skip_header = False
+                continue
+                
+            # Skip section-level bibliography entries and "References:" headings
+            if line_strip.lower().startswith("references:") or line_strip.lower() == "references":
+                continue
+            if line_strip.startswith("[") and "]" in line_strip[:5]:
                 continue
                 
             # Table accumulator
             if line_strip.startswith("|"):
                 if para_accumulator:
-                    pdf.set_font("Helvetica", "", 8)
-                    pdf.set_text_color(71, 85, 105)
                     para_text = " ".join(para_accumulator)
                     para_text = para_text.replace("**", "").replace("__", "")
-                    pdf.multi_cell(0, 4, clean_pdf_text(para_text))
-                    pdf.ln(2)
+                    pdf.print_paragraph(para_text)
                     para_accumulator = []
                 
                 in_table = True
@@ -326,26 +408,43 @@ async def download_report_pdf(
                     if headers and rows:
                         col_count = len(headers)
                         col_width = 90 / col_count
+                        table_height = 5 + 4.5 * len(rows) + 5
+                        pdf.ensure_space(table_height)
                         pdf.draw_table(headers, rows, [col_width] * col_count)
                     table_accumulator = []
             
             # Heading lines
             if line_strip.startswith("#"):
                 if para_accumulator:
-                    pdf.set_font("Helvetica", "", 8)
-                    pdf.set_text_color(71, 85, 105)
                     para_text = " ".join(para_accumulator)
                     para_text = para_text.replace("**", "").replace("__", "")
-                    pdf.multi_cell(0, 4, clean_pdf_text(para_text))
-                    pdf.ln(2)
+                    pdf.print_paragraph(para_text)
                     para_accumulator = []
                 
                 level = len(line_strip) - len(line_strip.lstrip('#'))
                 title = line_strip.lstrip('#').strip()
                 
-                # Check space compatibility
-                if pdf.get_y() > 230:
-                    pdf.accept_page_break()
+                # Skip duplicate headings
+                if title.lower() == last_heading.lower():
+                    continue
+                last_heading = title
+                
+                # Check for transition to 1-column for References & Bibliography
+                if "references" in title.lower() or "bibliography" in title.lower():
+                    pdf.two_column = False
+                    pdf.col = 0
+                    pdf.set_left_margin(10)
+                    pdf.set_right_margin(10)
+                    pdf.set_x(10)
+                    # Force a page break so the bibliography page is clean and full width
+                    if pdf.get_y() > 30:
+                        pdf.add_page()
+                
+                # Check space compatibility: if the heading will trigger a chart, we need space for both (25 + 50 = 75)
+                required_space = 25
+                if level <= 2 and any(kw in title.lower() for kw in ["analysis", "finding", "comparison"]):
+                    required_space = 75
+                pdf.ensure_space(required_space)
                 
                 if level == 1:
                     pdf.set_font("Helvetica", "B", 10.5)
@@ -369,9 +468,6 @@ async def download_report_pdf(
                 # Add vector performance chart dynamically
                 if "analysis" in title.lower() or "finding" in title.lower() or "comparison" in title.lower():
                     chart_y = pdf.get_y()
-                    if chart_y > 190:
-                        pdf.accept_page_break()
-                        chart_y = pdf.get_y()
                     
                     label1 = "System A"
                     label2 = "System B"
@@ -395,24 +491,18 @@ async def download_report_pdf(
                         [60, 65, 45, 30, 80],
                         label1, label2
                     )
-                    pdf.ln(48)
+                    pdf.ln(2)  # Minor spacing after the chart (draw_vector_chart already updates Y to 2mm below the border)
                 continue
             
             # Bullet/Numbered list lines
-            if line_strip.startswith(("-", "*", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.")):
+            if line_strip.startswith(("- ", "* ", "1. ", "2. ", "3. ", "4. ", "5. ", "6. ", "7. ", "8. ", "9. ")):
                 if para_accumulator:
-                    pdf.set_font("Helvetica", "", 8)
-                    pdf.set_text_color(71, 85, 105)
                     para_text = " ".join(para_accumulator)
                     para_text = para_text.replace("**", "").replace("__", "")
-                    pdf.multi_cell(0, 4, clean_pdf_text(para_text))
-                    pdf.ln(2)
+                    pdf.print_paragraph(para_text)
                     para_accumulator = []
                 
-                pdf.set_font("Helvetica", "", 7.5)
-                pdf.set_text_color(71, 85, 105)
-                pdf.multi_cell(0, 4, clean_pdf_text(line_strip))
-                pdf.ln(1)
+                pdf.print_paragraph(line_strip, font_size=7.5, spacing=1)
                 continue
             
             # Accumulate normal text paragraph
@@ -420,22 +510,16 @@ async def download_report_pdf(
                 para_accumulator.append(line_strip)
             else:
                 if para_accumulator:
-                    pdf.set_font("Helvetica", "", 8)
-                    pdf.set_text_color(71, 85, 105)
                     para_text = " ".join(para_accumulator)
                     para_text = para_text.replace("**", "").replace("__", "")
-                    pdf.multi_cell(0, 4, clean_pdf_text(para_text))
-                    pdf.ln(2)
+                    pdf.print_paragraph(para_text)
                     para_accumulator = []
         
         # Final flushes
         if para_accumulator:
-            pdf.set_font("Helvetica", "", 8)
-            pdf.set_text_color(71, 85, 105)
             para_text = " ".join(para_accumulator)
             para_text = para_text.replace("**", "").replace("__", "")
-            pdf.multi_cell(0, 4, clean_pdf_text(para_text))
-            pdf.ln(2)
+            pdf.print_paragraph(para_text)
         if in_table and table_accumulator:
             headers, rows = parse_markdown_table(table_accumulator)
             if headers and rows:
@@ -443,15 +527,14 @@ async def download_report_pdf(
                 col_width = 90 / col_count
                 pdf.draw_table(headers, rows, [col_width] * col_count)
 
-    # Recommendations (in Column Flow)
+    # Recommendations (in Column Flow or Full Width depending on whether we switched)
     if report.recommendations:
+        pdf.ensure_space(25)
         pdf.ln(2)
         pdf.set_text_color(30, 41, 59)
         pdf.set_font("Helvetica", "B", 10.5)
         pdf.cell(0, 5.5, "Recommendations", ln=True)
         pdf.ln(1.5)
-        pdf.set_font("Helvetica", "", 7.5)
-        pdf.set_text_color(71, 85, 105)
         for i, rec in enumerate(report.recommendations, 1):
             if isinstance(rec, dict):
                 text = f"{i}. {rec.get('recommendation', str(rec))}"
@@ -459,18 +542,16 @@ async def download_report_pdf(
                     text += f" [Priority: {rec['priority']}]"
             else:
                 text = f"{i}. {rec}"
-            pdf.multi_cell(0, 4, clean_pdf_text(text))
-            pdf.ln(0.5)
+            pdf.print_paragraph(text, font_size=7.5, spacing=1)
 
-    # Risks (in Column Flow)
+    # Risks (in Column Flow or Full Width depending on whether we switched)
     if report.risks:
+        pdf.ensure_space(25)
         pdf.ln(2)
         pdf.set_text_color(30, 41, 59)
         pdf.set_font("Helvetica", "B", 10.5)
         pdf.cell(0, 5.5, "Risks", ln=True)
         pdf.ln(1.5)
-        pdf.set_font("Helvetica", "", 7.5)
-        pdf.set_text_color(71, 85, 105)
         for i, risk in enumerate(report.risks, 1):
             if isinstance(risk, dict):
                 text = f"{i}. {risk.get('risk', str(risk))}"
@@ -478,25 +559,7 @@ async def download_report_pdf(
                     text += f" [Severity: {risk['severity']}]"
             else:
                 text = f"{i}. {risk}"
-            pdf.multi_cell(0, 4, clean_pdf_text(text))
-            pdf.ln(0.5)
-
-    # Sources (in Column Flow)
-    if report.source_references:
-        pdf.ln(2.5)
-        pdf.set_text_color(30, 41, 59)
-        pdf.set_font("Helvetica", "B", 10.5)
-        pdf.cell(0, 5.5, "Source References", ln=True)
-        pdf.ln(1.5)
-        pdf.set_font("Helvetica", "", 7)
-        pdf.set_text_color(100, 116, 139)
-        for i, src in enumerate(report.source_references, 1):
-            if isinstance(src, dict):
-                text = f"[{i}] {src.get('title', 'Unknown Source')} - {src.get('type', '')}"
-            else:
-                text = f"[{i}] {src}"
-            pdf.multi_cell(0, 3.5, clean_pdf_text(text))
-            pdf.ln(0.5)
+            pdf.print_paragraph(text, font_size=7.5, spacing=1)
 
     # Output PDF to buffer
     pdf_bytes = pdf.output()
