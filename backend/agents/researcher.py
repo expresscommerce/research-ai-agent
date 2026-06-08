@@ -25,6 +25,17 @@ class ResearcherAgent(BaseAgent):
         sub_topics = plan.get("sub_topics", [])
         queries = plan.get("research_queries", [])
 
+        # Find query generator output in previous findings (if present)
+        query_gen_output = {}
+        for finding in context.previous_findings:
+            if isinstance(finding, dict) and ("tavily_queries" in finding or "ddg_queries" in finding or "arxiv_queries" in finding):
+                query_gen_output = finding
+                break
+
+        tavily_queries = query_gen_output.get("tavily_queries", queries)
+        ddg_queries = query_gen_output.get("ddg_queries", queries)
+        arxiv_queries = query_gen_output.get("arxiv_queries", queries)
+
         # Include critic feedback for targeted follow-up
         feedback_section = ""
         if context.critic_feedback:
@@ -68,7 +79,7 @@ Previous weaknesses identified:
                     logger.error(f"Tavily search failed for '{q}': {ex}")
                 return []
             
-            for q in queries[:2]:
+            for q in tavily_queries[:2]:
                 tasks.append(run_tavily(q))
 
         # DuckDuckGo Search
@@ -88,7 +99,7 @@ Previous weaknesses identified:
                     logger.error(f"DuckDuckGo search failed for '{q}': {ex}")
                 return []
 
-            for q in queries[:2]:
+            for q in ddg_queries[:2]:
                 tasks.append(run_ddg(q))
 
         # arXiv Academic Search
@@ -117,12 +128,12 @@ Previous weaknesses identified:
                     logger.error(f"arXiv search failed for '{q}': {ex}")
                 return []
 
-            for q in queries[:2]:
+            for q in arxiv_queries[:2]:
                 tasks.append(run_arxiv(q))
 
         # Run all searches concurrently
         if tasks:
-            logger.info(f"[researcher] Running concurrent searches across enabled engines for: {queries[:2]}")
+            logger.info(f"[researcher] Running concurrent searches across enabled engines")
             results_lists = await asyncio.gather(*tasks)
             for sublist in results_lists:
                 if sublist:
